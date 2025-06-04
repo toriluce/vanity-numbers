@@ -1,7 +1,10 @@
+import fs from "fs";
+
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand, DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-
+import wordListPath from "word-list";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 const client = new DynamoDBClient({ region: process.env.REGION });
@@ -18,7 +21,13 @@ const PHONE_KEYPAD = {
   9: ["W", "X", "Y", "Z"],
 };
 
-const wordList = ["TORI"];
+const rawWordList = fs.readFileSync(wordListPath, "utf8").split("\n");
+
+const wordList = rawWordList
+  .map((word) => word.toUpperCase())
+  .filter(
+    (word) => /^[A-Z]+$/.test(word) && word.length >= 3 && word.length <= 7
+  );
 
 function generateVanityOptions(phoneNumber, wordList) {
   let digits = phoneNumber.replace(/\D/g, "");
