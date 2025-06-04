@@ -1,0 +1,29 @@
+{
+  "name": "vanity-number",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toriluce/vanity-numbers.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/toriluce/vanity-numbers/issues"
+  },
+  "homepage": "https://github.com/toriluce/vanity-numbers#readme",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.823.0",
+    "@aws-sdk/lib-dynamodb": "^3.823.0",
+    "dotenv": "^16.5.0"
+  }
+}
