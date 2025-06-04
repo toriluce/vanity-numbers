@@ -90,7 +90,9 @@ export async function handler(event) {
   }
 
   return {
-    topResults: vanityOptions,
+    topResult1: vanityOptions[0] || "",
+    topResult2: vanityOptions[1] || "",
+    topResult3: vanityOptions[2] || "",
     hasVanityResults: vanityOptions.length > 0,
   };
 }
