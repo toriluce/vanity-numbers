@@ -20,6 +20,9 @@ To try it out, this function is live at ***(833) 566-6051***.
 8. The top vanity results are stored in DynamoDB alongside the caller number in order of “best.”
 9. Connect checks the `hasVanityResults` attribute from the Lambda response to determine the prompt for the user, giving up to the top three results or apologizing if none are found.
 10. The Connect flow reaches a disconnect block.
+    
+![Screenshot of Amazon Connect flow used for vanity number generation for customers.](https://raw.githubusercontent.com/toriluce/vanity-numbers/refs/heads/main/Amazon%20Connect%20Vanity%20Number%20Flow.png)
+Above: Amazon Connect vanity number flow diagram.
 
 ## "Best" Vanity Number Logic
 This function uses three logical principles to determine the "best" vanity number
