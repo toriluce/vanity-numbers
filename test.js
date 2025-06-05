@@ -6,8 +6,13 @@ import { handler } from "./index.js";
 (async () => {
   const testEvent = {
     Details: {
-      Parameters: {
-        phoneNumber: "+10000008674",
+      ContactData: {
+        Attributes: {
+          Category: "pet",
+        },
+        CustomerEndpoint: {
+          Address: "+18009453228",
+        },
       },
     },
   };
