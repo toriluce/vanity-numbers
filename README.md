@@ -1,52 +1,76 @@
 # vanity-numbers
 ---
 ## Overview
-A vanity number is a ohone number that transforms the numbers to the letters that match the numbers on a keypad to form memorable words often related to the business. For example, the ohone number 1-888-945-3228 can be dialed as 1-888-WILDCAT, which might benefit the marketing for a wildlife rehabilitation center. 
+A vanity number is a phone number that spells out a memorable word or phrase using the letters associated with the digits on a telephone keypad. These numbers are often tied to a company’s name, industry, or branding. For example, the phone number ***1-888-945-3228*** can be dialed as ***1-888-WILDCAT***, which might benefit the marketing of a zoo or wildlife hotline.
 
-This project uses Amazon Connect to deliver users the best vanity options for the number they call from. 
+This project is built using Node.js and JavaScript, and works with several AWS services including Amazon Connect (for call handling), AWS Lambda (for on-demand backend processing), DynamoDB (for data storage), and Amazon Lex (for voice-based input). Logging and testing are supported through CloudWatch, with secure permissions managed via IAM.
+
+The system also uses the [Datamuse API](https://www.datamuse.com/api/) to fetch related words by category, and the npm package [word-list](https://www.npmjs.com/package/word-list) for fallback word matching, helping deliver the best possible vanity options based on the caller's phone number and chosen category.
 
 To try it out, this function is live at ***(833) 566-6051***.
 
-## How It Words
+## How It Works
 1. A call is made to the Amazon Connect phone number.
-2. Connect asks for a word to describe your business.
-3. Amazon Lex captures your spoken word and returns it to Connect.
-4. The lambda is called alongside the caller number and the caller's chosen keyword.
-5. The function makes a request to the [Datamuse API](https://www.datamuse.com/api/) to retieve the first 1000 words related to the words using the ml (means like) query.
-6. Phone number is checked agaisnt all related words.
-7. The function uses npm packages `fs` to render the words in `word-list`.
-8. Matches are added to a list of vanity options until 5 are found.
-9. The top vaity results are stored in DynamoDB alongside the caller number with the longest words stored first.
-10. Top results, if found, are spoken to the user.
+2. Connect utilizes a contact flow that first prompts the caller for a category they’d like to use for the vanity number search.
+3. Amazon Lex captures spoken input, identifies the `GetCustomerBusinessCategory` intent, and intelligently recognizes the user’s category, storing it in the `CategorySlot` and returning it to Connect where it is stored as a contact attribute.
+4. Connect invokes the Lambda function, passing the caller number and category through the event.
+5. The Lambda uses `axios` to request up to 1000 words related to the caller’s category from the Datamuse API using the` ml=` (means like) query.
+6. The Lambda steps through the last 7 digits or the phone number, first checking for 7-letter word vanity matches. If none are found, it shifts to the 6th-to-last digit and words are compared with 6 letters, then continues the process for 5, 4, and 3 letter words until finding five matches or exhausting the list.
+7. If fewer than five matches are found, the Lambda then utilizes the `word-list` package, and via `fs`, gathers a large list of words to start a second iterative search for the remaining five vanity matches.
+8. The top vanity results are stored in DynamoDB alongside the caller number in order of “best.”
+9. Connect checks the `hasVanityResults` attribute from the Lambda response to determine the prompt for the user, giving up to the top three results or apologizing if none are found.
+10. The Connect flow reaches a disconnect block.
 
----
-## "Best Logic"
-This function uses three logical principals to detwermin the "best" vanity number
-1. Category relevance:
-   * Purpose: Words more closesly related to the business name help the user remmeber the purpose of the business.
-   * Exaple: A floral business might prefer words such as ***rose***, ***petal***, or ***bloom***.
-2. Vanity length:
-   * Purpose: In a phone number, longer words require less digit memorization.
+## "Best" Vanity Number Logic
+This function uses three logical principles to determine the "best" vanity number
+1. Category Relevance:
+   * Purpose: Words more closely related to the caller's business category can help reinforce the purpose of the number and improve memorability.
+   * Example: A floral business might prefer words such as ***ROSE***, ***PETAL***, or ***BLOOM***.
+2. Longest Length:
+   * Purpose: In a vanity number, longer words reduce the number of digits the caller needs to memorize, making the number more brandable and impactful.
    * Example: A business may prefer the vanity number ***1-888-WILDCAT*** over ***+1-888-945-3BAT***.
-3. Capped at 3-7 alphabetical characters:
-   * Purpose: Vanity numbers with 2 or less letters are likely not memorable enough to be considered. Words with special characers also are not considered due to their inabiliyt to be translated to a keypad digit.
+3. Word Validity (3-7 Alphabetical Characters):
+   * Purpose: Vanity words under 3 characters are likely not memorable enough to be considered. Words with special characters also are not considered due to their inability to be translated to a keypad digit.
    * Example: ***1-800-945-32AT*** is unremarkable and ***1-800-THEY'RE*** is invalid.
   
-## Shortcuts / Active Production-unready componee=nts
-* Amazon Connect currently explicitly states the error for easy dubegging. Productin ready code would default all problems to a universal prompt similar to *"I'm sorry. There was an error on our end. Please try again later."*
+## Shortcuts / Active Production-Unready Components
+The following decisions were made to prioritize fast development and debugging, but would be revised in a production environment:
+* **Explicit error messaging in Connect**  
+  Amazon Connect currently plays detailed error prompts for easy debugging. In production the contact flow might default all errors to a universal prompt similar to:
+  >"I'm sorry. There was an error on our end. Please try again later."
+* **Unencrypted phone numbers**  
+  Phone numbers are stored in DynamoDB without encryption for simplicity during development. In a production environment, this data should be protected using:
+  - AWS Key Management Service (KMS) for at-rest encryption
+  - User-side encryption within Lambda
+  - CloudWatch log filtering or masking to prevent logging sensitive data using data protection policies
+* **Over-broad IAM permissions**    
+  Some IAM roles currently include wildcard access (*) for convenience. In production, permissions should be narrowed to strictly necessary scope.
 
-## Unresolved issues
-### Problem
-* Amazon Lex listens too long leaving the user waiting several seconds before Amazon Connect delivers the next prompt
-### Tried
-* Removed Lambda calls from Lex
-* Deactivatied confirmation, fullfillment, and closing actions
-* Activated a play prompt block before calling the Lambda function
 
----
+## Unresolved Issues
+
+1. **Problem:**  
+   Amazon Lex listens too long, leaving the user waiting several seconds before Amazon Connect delivers the next prompt.  
+
+   **Attempts at Resolving:**
+   - Removed Lambda calls from Lex  
+   - Deactivated confirmation, fulfillment, and closing actions  
+   - Activated a Play Prompt block before invoking the Lambda function to check if the delay was caused by the Lambda  
+
+   Despite these changes, the delay remains noticeable.
+
 ## Looking Forward
-Several additional features could enhance the user expereince:
-* Allow users to retry new keywords within the same call
-* Check if the caller already has a database entry and return all previous top results, resorted to foward the best of the best
-* Create a customized word list that is prioritized over `word-list` with build-in categories more easily recognizable when spoken to Lex.
-* Concactenated word matches like ***GOOD DOG***
+Several additional features could enhance the user experience and vanity number discovery:
+* **Keyword retries within the same call:**    
+  Allow users to provide a new category if no matches we found or if they would like to continue exploring more options.
+* **Call history checks:**    
+  Detect returning callers by phone number lookup and return all previous top results, resorted to forward the best of the best.
+* **Custom word list with built-in categories:**  
+  Create a hand-crafted word list that is prioritized over `word-list` with build-in categories, making spoken words more easily recognizable to Lex and provide more meaningful vanity results.
+* **Concatenated word matches:**  
+   Support layered words like ***1-800-GOOD-DOG*** to provide longer vanity matches.
+* **Over-spell option:**  
+  Give users the option to search vanity words that extend beyond 7 letters similar to the one used in ***1-800-MATTRESS***.
+* **Phonetic and alternative spelling support:**  
+  Add functionality that substitutes dictionary words for phonetic spellings like ***1-800-888-DOGZ*** which would provide more potential options.
+
