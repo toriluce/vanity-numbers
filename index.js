@@ -32,6 +32,12 @@ const fallbackWords = rawWordList
     (word) => /^[A-Z]+$/.test(word) && word.length >= 3 && word.length <= 7
   );
 
+  /**
+ * Fetches up to 1000 words related to the given category using the Datamuse API.
+ *
+ * @param {string} category - The category or concept to search related words for.
+ * @returns {Promise<string[]>} - An array of uppercase words between 3 and 7 characters.
+ */
 async function getCategoryWords(category) {
   try {
     const response = await axios.get("https://api.datamuse.com/words", {
@@ -62,6 +68,15 @@ async function getCategoryWords(category) {
   }
 }
 
+/**
+ * Generates up to 5 vanity word matches from a phone number and word list.
+ *
+ * @param {string} phoneNumber - The phone number to match against.
+ * @param {string[]} words - An array of words to match from.
+ * @param {string|null} fromCategory - The category source, or null if fallback.
+ * @returns {Array<{vanity: string, fromCategory: string|null, length: number}>}
+ *   A list of matched vanity results with source and length.
+ */
 function generateVanityOptions(phoneNumber, words, fromCategory) {
   let digits = phoneNumber.replace(/\D/g, "");
   if (digits.length > 10) digits = digits.slice(-10);
@@ -97,6 +112,15 @@ function generateVanityOptions(phoneNumber, words, fromCategory) {
   return matches;
 }
 
+/**
+ * Merges and re-sorts old and new vanity results by category relevance and word length.
+ *
+ * @param {Array<{vanity: string, fromCategory: string|null, length: number}>} existingResults - The previous top results from the database.
+ * @param {Array<{vanity: string, fromCategory: string|null, length: number}>} newResults - The newly generated matches.
+ * @param {string} currentCategory - The current search category (used to update entries).
+ * @returns {Array<{vanity: string, fromCategory: string|null, length: number}>}
+ *   A merged and sorted list of top vanity results.
+ */
 function mergeNewTopResults(existingResults, newResults, currentCategory) {
   const existingMap = new Map(existingResults.map((r) => [r.vanity, { ...r }]));
 
@@ -126,8 +150,14 @@ function mergeNewTopResults(existingResults, newResults, currentCategory) {
   return [...fromCategoryMatches, ...fallbackMatches];
 }
 
-// ********************* HANDLER FUNCTION *********************
-
+/**
+ * Lambda handler for the Amazon Connect vanity number generator.
+ *
+ * @param {object} event - The event object passed from Amazon Connect.
+ * @returns {Promise<object>} 
+ * - If validatingCaller is "true": returns { bestVanity }.
+ * - Otherwise: returns { topResult1, topResult2, topResult3, hasVanityResults, usedFallback, firstCall, bestVanity }.
+ */
 export async function handler(event) {
   console.log("Event received:", JSON.stringify(event, null, 2));
 

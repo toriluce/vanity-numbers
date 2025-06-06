@@ -6,6 +6,12 @@ import { handler } from "./index.js";
 const endpointAddress = "1-888-945-3228";
 const category = "aat";
 
+/**
+ * Manual test script for Lambda vanity number handler.
+ * Simulates two flows:
+ * 1. Validating an existing caller to retrieve bestVanity.
+ * 2. Performing a new category search and saving results.
+ */
 (async () => {
   const validatingEvent = {
     Details: {
