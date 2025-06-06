@@ -3,13 +3,13 @@ import wordListPath from "word-list";
 import dotenv from "dotenv";
 import axios from "axios";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { PutCommand, DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import {
+  PutCommand,
+  GetCommand,
+  DynamoDBDocumentClient,
+} from "@aws-sdk/lib-dynamodb";
 
 dotenv.config();
-
-if (!process.env.TABLE_NAME || !process.env.REGION) {
-  throw new Error("Missing required environment variables.");
-}
 
 const client = new DynamoDBClient({ region: process.env.REGION });
 const ddb = DynamoDBDocumentClient.from(client);
@@ -41,34 +41,33 @@ async function getCategoryWords(category) {
       },
     });
 
-    let categoryWords = [category.toUpperCase()];
-
-    categoryWords = categoryWords.concat(
-      response.data
+    const categoryWords = [
+      category.toUpperCase(),
+      ...response.data
         .map((entry) => entry.word.toUpperCase())
         .filter(
           (word) =>
             /^[A-Z]+$/.test(word) && word.length >= 3 && word.length <= 7
-        )
-    );
+        ),
+    ];
 
     console.log(
       `Found ${categoryWords.length} words for category: ${category}`
     );
 
     return categoryWords;
-
   } catch (err) {
     console.error("Error fetching from Datamuse:", err.message);
     return [];
   }
 }
 
-function generateVanityOptions(phoneNumber, words) {
+function generateVanityOptions(phoneNumber, words, fromCategory) {
   let digits = phoneNumber.replace(/\D/g, "");
   if (digits.length > 10) digits = digits.slice(-10);
-  
+
   const matches = [];
+
   for (let word of words) {
     const wordLength = word.length;
     const start = digits.length - wordLength;
@@ -90,13 +89,44 @@ function generateVanityOptions(phoneNumber, words) {
       const vanity = `${
         numberPart ? numberPart + " " : ""
       }${word.toUpperCase()}`;
-      matches.push({ vanity, word, length: wordLength });
+      matches.push({ vanity, fromCategory, length: wordLength });
       if (matches.length >= 5) break;
     }
   }
 
-  return matches.sort((a, b) => b.length - a.length).map((m) => m.vanity);
+  return matches;
 }
+
+function mergeNewTopResults(existingResults, newResults, currentCategory) {
+  const existingMap = new Map(existingResults.map((r) => [r.vanity, { ...r }]));
+
+  for (const incoming of newResults) {
+    const existing = existingMap.get(incoming.vanity);
+
+    if (existing) {
+      if (existing.fromCategory === null && incoming.fromCategory) {
+        existing.fromCategory = incoming.fromCategory;
+      }
+      existingMap.set(incoming.vanity, existing);
+    } else {
+      existingMap.set(incoming.vanity, incoming);
+    }
+  }
+
+  const allMatches = Array.from(existingMap.values());
+
+  const fromCategoryMatches = allMatches
+    .filter((r) => r.fromCategory !== null)
+    .sort((a, b) => b.length - a.length);
+
+  const fallbackMatches = allMatches
+    .filter((r) => r.fromCategory === null)
+    .sort((a, b) => b.length - a.length);
+
+  return [...fromCategoryMatches, ...fallbackMatches];
+}
+
+// ********************* HANDLER FUNCTION *********************
 
 export async function handler(event) {
   console.log("Event received:", JSON.stringify(event, null, 2));
@@ -106,33 +136,75 @@ export async function handler(event) {
   const phoneNumber = String(rawNumber);
   console.log("Caller number:", phoneNumber);
 
+  const validatingCaller =
+    event?.Details?.Parameters.validatingCaller || "false";
+
+  let existing;
+  try {
+    existing = await ddb.send(
+      new GetCommand({
+        TableName: process.env.TABLE_NAME,
+        Key: { callerNumber: phoneNumber },
+      })
+    );
+  } catch (err) {
+    console.error("Error reading from DynamoDB:", err);
+  }
+
+  if (validatingCaller === "true") {
+    console.log("Validating caller.");
+    const previousTop = existing?.Item?.topResults || [];
+    const best = previousTop.sort((a, b) => b.length - a.length)[0];
+
+    return {
+      previousTopResult: best?.vanity || "N/A",
+    };
+  }
+
   const category =
     event?.Details?.ContactData?.Attributes?.Category || "general";
 
-  console.log("Business category:", category);
+  console.log("Category:", category);
 
-  const categoryWords = await getCategoryWords(category);
-  let categoryMatches = generateVanityOptions(phoneNumber, categoryWords);
-  console.log("Category matches:", categoryMatches);
-
-  let finalMatches = categoryMatches;
   let usedFallback = false;
-
-  if (finalMatches.length === 0) {
+  const categoryWords = await getCategoryWords(category);
+  const categoryMatches = generateVanityOptions(
+    phoneNumber,
+    categoryWords,
+    category
+  );
+  console.log("Category matches:", categoryMatches);
+  if (categoryMatches.length === 0) {
     usedFallback = true;
   }
 
-  if (finalMatches.length < 5) {
-    const fallbackMatches = generateVanityOptions(phoneNumber, fallbackWords);
+  let fallbackMatches = [];
+  if (categoryMatches.length < 5) {
+    usedFallback = true;
+    fallbackMatches = generateVanityOptions(phoneNumber, fallbackWords, null);
     console.log("Fallback matches:", fallbackMatches);
-
-    finalMatches = [
-      ...categoryMatches,
-      ...fallbackMatches.filter((w) => !categoryMatches.includes(w)),
-    ].slice(0, 5);
   }
 
-  console.log("Final matches:", finalMatches);
+  const newMatches = [...categoryMatches, ...fallbackMatches];
+
+  const existingTopResults = existing?.Item?.topResults || [];
+  console.log("Existing top results:", existingTopResults);
+  const topResults = mergeNewTopResults(
+    existingTopResults,
+    newMatches,
+    category
+  );
+  console.log("Merged top results:", topResults);
+  const previousQueries = existing?.Item?.previousQueries || [];
+  const alreadyLogged = previousQueries.some(
+    (q) => q.fromCategory === category
+  );
+  const updatedQueries = alreadyLogged
+    ? previousQueries
+    : [
+        ...previousQueries,
+        { fromCategory: category, queryDate: new Date().toISOString() },
+      ];
 
   try {
     await ddb.send(
@@ -140,23 +212,29 @@ export async function handler(event) {
         TableName: process.env.TABLE_NAME,
         Item: {
           callerNumber: phoneNumber,
-          createdAt: new Date().toISOString(),
-          topResults: finalMatches,
-          categoryUsed: category,
-          usedFallback,
+          createdAt: existing?.Item?.createdAt || new Date().toISOString(),
+          topResults,
+          previousQueries: updatedQueries,
         },
       })
     );
-    console.log("Top 5 write to DynamoDB successful");
+
+    const existingVanities = new Set(existingTopResults.map((r) => r.vanity));
+    const newVanityCount = newMatches.filter(
+      (r) => !existingVanities.has(r.vanity)
+    ).length;
+    console.log(
+      `${newVanityCount} new vanities found for category "${category}".`
+    );
   } catch (err) {
     console.error("DynamoDB write failed:", err);
   }
 
   return {
-    topResult1: finalMatches[0] || "",
-    topResult2: finalMatches[1] || "",
-    topResult3: finalMatches[2] || "",
-    hasVanityResults: finalMatches.length > 0,
+    topResult1: newMatches[0]?.vanity || "",
+    topResult2: newMatches[1]?.vanity || "",
+    topResult3: newMatches[2]?.vanity || "",
+    hasVanityResults: newMatches.length > 0,
     usedFallback,
   };
 }
