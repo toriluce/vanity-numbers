@@ -36,7 +36,7 @@ Every new result is compared against the caller's previous entries. Unique vanit
 **Call Completion**  
 If the caller does not respond, the Connect flow reaches a disconnect block.
     
-![Screenshot of Amazon Connect flow used for vanity number generation for customers.](https://raw.githubusercontent.com/toriluce/vanity-numbers/refs/heads/main/Amazon%20Connect%20Vanity%20Number%20Flow.png)
+![Screenshot of Amazon Connect flow used for vanity number generation for customers.](https://raw.githubusercontent.com/toriluce/vanity-numbers/refs/heads/main/connect-flow-diagram.png)
 Above: The Amazon Connect vanity number flow diagram.
 
 ## "Best" Vanity Number Logic

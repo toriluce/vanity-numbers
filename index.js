@@ -153,13 +153,14 @@ export async function handler(event) {
 
   if (validatingCaller === "true") {
     console.log("Validating caller.");
-    const previousTop = existing?.Item?.topResults || [];
-    const best = previousTop.sort((a, b) => b.length - a.length)[0];
+    const best = existing?.Item?.topResults[0];
 
     return {
-      previousTopResult: best?.vanity || "N/A",
+      bestVanity: best?.vanity || "N/A",
     };
   }
+
+  const firstCall = !existing?.Item ? true : false;
 
   const category =
     event?.Details?.ContactData?.Attributes?.Category || "general";
@@ -230,11 +231,15 @@ export async function handler(event) {
     console.error("DynamoDB write failed:", err);
   }
 
+  const bestVanity = topResults[0]?.vanity || "N/A";
+
   return {
     topResult1: newMatches[0]?.vanity || "",
     topResult2: newMatches[1]?.vanity || "",
     topResult3: newMatches[2]?.vanity || "",
     hasVanityResults: newMatches.length > 0,
     usedFallback,
+    firstCall,
+    bestVanity,
   };
 }
